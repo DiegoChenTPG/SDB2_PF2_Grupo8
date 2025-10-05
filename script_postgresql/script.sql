@@ -1,6 +1,6 @@
 -- Opcional: trabajar en un schema propio
-CREATE SCHEMA IF NOT EXISTS imdb;
-SET search_path TO imdb, public;
+CREATE SCHEMA IF NOT EXISTS imdb; -- como crear la DB en MySQL
+SET search_path TO imdb; -- Para usar unicamente el esquema de imdb, como decir USE NOMBRE_DB en MySQL
 
 -- ====================================================================
 -- TITLE BASICS
