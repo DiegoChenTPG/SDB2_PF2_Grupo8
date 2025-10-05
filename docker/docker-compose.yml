@@ -1,0 +1,41 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: pg-bases2
+    environment:
+      POSTGRES_PASSWORD: bases2_proyecto
+      POSTGRES_DB: bases2_proyectos
+      # Opcional: POSTGRES_USER: postgres (por defecto)
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - pg_wal_archive:/var/lib/postgresql/wal-archive
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    command: >
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c archive_mode=on
+      -c archive_command='test ! -f /var/lib/postgresql/wal-archive/%f && cp %p /var/lib/postgresql/wal-archive/%f'
+      -c shared_buffers=512MB
+      -c checkpoint_timeout=15min
+      -c max_wal_size=2GB
+      -c synchronous_commit=off
+    # synchronous_commit=off acelera la carga inicial; luego lo podemos activar
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+
+volumes:
+  pg_data:
+  pg_wal_archive:
