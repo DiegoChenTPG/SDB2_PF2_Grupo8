@@ -1,30 +1,78 @@
 name: bases2
 version: "3.9"
+
 services:
-  postgres:
+  # === PRIMARY  ===
+  pg-bases2:
     image: postgres:16
     container_name: pg-bases2
     environment:
       POSTGRES_PASSWORD: bases2_proyecto
       POSTGRES_DB: bases2_proyectos
-      # Opcional: POSTGRES_USER: postgres (por defecto)
+      # POSTGRES_USER por defecto = postgres
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - pg_wal_archive:/var/lib/postgresql/wal-archive
       - ./initdb:/docker-entrypoint-initdb.d:ro
-    command: >-
-      postgres
-      -c archive_mode=off
-      -c synchronous_commit=on
-      -c wal_level=replica
-      -c max_wal_senders=10
-      -c shared_buffers=512MB
-      -c checkpoint_timeout=15min
-      -c max_wal_size=2GB
-    # synchronous_commit=off acelera la carga inicial; luego lo podemos activar
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command:
+      - postgres
+      - -c
+      - archive_mode=off
+      - -c
+      - synchronous_commit=on
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - listen_addresses=*
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U postgres -d bases2_proyectos"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [pgnet]
 
+  # === REPLICA (standby) ===
+  pg-replica:
+    image: postgres:16
+    container_name: pg-replica
+    environment:
+      POSTGRES_PASSWORD: bases2_proyecto
+    ports:
+      - "5433:5432"
+    volumes:
+      - replica-data:/var/lib/postgresql/data
+    depends_on:
+      - pg-bases2
+    command:
+      # arranca normal; el basebackup se hace con un run one-off 
+      - postgres
+      - -c
+      - hot_standby=on
+      - -c
+      - listen_addresses=*
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [pgnet]
+
+  # === PgAdmin  (apunta al primary) ===
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
@@ -34,8 +82,13 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - postgres
+      - pg-bases2
+    networks: [pgnet]
 
 volumes:
   pg_data:
   pg_wal_archive:
+  replica-data:
+
+networks:
+  pgnet:
