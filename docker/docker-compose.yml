@@ -17,10 +17,13 @@ services:
       - pg_wal_archive:/var/lib/postgresql/wal-archive
       - ./initdb:/docker-entrypoint-initdb.d:ro
       - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - pgbackrest_repo:/var/lib/pgbackrest
     command:
       - postgres
       - -c
-      - archive_mode=off
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=bases2-db archive-push %p
       - -c
       - synchronous_commit=on
       - -c
@@ -87,25 +90,6 @@ services:
     depends_on:
       - pg-bases2
     networks: [pgnet]
-
-  # para los backups
-  pgbackrest:
-    image: ghcr.io/pgbackrest/pgbackrest:latest
-    container_name: pgbackrest
-    depends_on:
-      - pg-bases2
-    environment:
-      PGBACKREST_STANZA: main
-      PGBACKREST_LOG_LEVEL_CONSOLE: info
-    volumes:
-      - pgbackrest_repo:/var/lib/pgbackrest
-      - ./pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
-      # Montamos el data y WAL como solo lectura para inspección (útil más adelante)
-      - pg_data:/pgdata:ro
-      - pg_wal_archive:/pgwal:ro
-    networks: 
-      - pgnet
-
 
 volumes:
   pg_data:
