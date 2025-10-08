@@ -1,7 +1,7 @@
 # Copiar y ejecutar en PRIMARIA (pg-bases2)
-docker cp .\health.sql pg-bases2:/tmp/health.sql
+docker cp ../script_apoyo/health.sql pg-bases2:/tmp/health.sql
 docker exec -it pg-bases2 psql -U postgres -d postgres -f /tmp/health.sql
 
 # Copiar y ejecutar en STANDBY (pg-replica)
-docker cp .\health.sql pg-replica:/tmp/health.sql
+docker cp ../script_apoyo/health.sql pg-replica:/tmp/health.sql
 docker exec -it pg-replica psql -U postgres -d postgres -f /tmp/health.sql
