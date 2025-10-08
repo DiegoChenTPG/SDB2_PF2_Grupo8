@@ -56,6 +56,7 @@ services:
       - "5433:5432"
     volumes:
       - replica-data:/var/lib/postgresql/data
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     depends_on:
       - pg-bases2
     command:
@@ -65,6 +66,8 @@ services:
       - hot_standby=on
       - -c
       - listen_addresses=*
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL","pg_isready -U postgres -d postgres"]
       interval: 5s
