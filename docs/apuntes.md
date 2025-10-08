@@ -275,3 +275,83 @@ Lo imprescindible son:
 - Las acciones anteriores
 - Las verificaciones de `pg_is_in_recovery()` y `pg_stat_replication`
 - Un INSERT de prueba en la primaria
+
+
+
+# Para el backup
+
+Paso B — Instalar pgBackRest en el primario y crear la configuración
+
+Ejecuta exactamente estos comandos y pega las salidas indicadas.
+
+B.1 Instalar pgbackrest dentro de pg-bases2
+docker exec -it pg-bases2 bash -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y pgbackrest"
+
+B.2 Crear /etc/pgbackrest/pgbackrest.conf
+
+Usaremos la misma “stanza” que pusiste en archive_command: bases2-db.
+
+docker exec -it pg-bases2 bash -lc "install -d -m 750 -o postgres -g postgres /etc/pgbackrest /var/lib/pgbackrest /var/log/pgbackrest && cat > /etc/pgbackrest/pgbackrest.conf <<'EOF'
+[global]
+repo1-path=/var/lib/pgbackrest
+log-level-console=info
+start-fast=y
+
+[GLOBAL:retention]
+repo1-retention-full=2
+repo1-retention-diff=3
+
+[bases2-db]
+pg1-path=/var/lib/postgresql/data
+pg1-port=5432
+pg1-user=postgres
+EOF
+chmod 640 /etc/pgbackrest/pgbackrest.conf && chown postgres:postgres /etc/pgbackrest/pgbackrest.conf"
+
+
+Verifica el archivo:
+
+docker exec -it pg-bases2 bash -lc "nl -ba /etc/pgbackrest/pgbackrest.conf"
+
+
+Paso B.3 (corregido) — Crear y verificar la stanza
+
+Crear la stanza como usuario postgres:
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db --log-level-console=info stanza-create
+
+
+Verificar:
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db check
+
+
+(Opcional) Confirmar que archive_command quedó con pgBackRest:
+
+docker exec pg-bases2 psql -U postgres -d postgres -c "show archive_command;"
+
+
+
+Paso C — Ejecutar el primer backup FULL y verificar
+
+Corre el backup full (como usuario postgres):
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db --type=full --archive-check=n --log-level-console=info backup
+
+
+Muestra el estado de los backups:
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db info
+
+Verificar que se generaron artefactos en el repo:
+
+docker exec pg-bases2 bash -lc "ls -la /var/lib/pgbackrest/backup/bases2-db && du -sh /var/lib/pgbackrest/backup/bases2-db"
+
+
+### Esto es para guardarlos en la misma carpeta de docker (en windows), por ahora el full
+mkdir .\backups
+docker cp pg-bases2:/var/lib/pgbackrest/backup/bases2-db/20251008-230710F .\backups\
+docker cp pg-bases2:/var/lib/pgbackrest/backup/bases2-db/backup.info .\backups\
+docker cp pg-bases2:/var/lib/pgbackrest/backup/bases2-db/backup.info.copy .\backups\
+
+
