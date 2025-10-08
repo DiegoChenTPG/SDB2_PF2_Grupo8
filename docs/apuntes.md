@@ -168,3 +168,110 @@ docker compose run --rm -u postgres --entrypoint bash pg-bases2 -lc "
 ```bash
 docker compose up -d pg-bases2
 ```
+
+
+### Todo este tema es para configurar el Sistema maestro esclavo y sus acciones
+
+
+
+
+# Pruebas minimas para probar (no reconfigurar) Failover y Failback
+
+## A) Failover (Promover la Réplica)
+
+### Acciones
+
+#### 1. Detener la primaria actual
+
+```bash
+docker stop pg-bases2
+```
+
+#### 2. Promover la réplica a primaria
+
+```bash
+docker exec -it pg-replica psql -U postgres -d postgres -c "SELECT pg_promote(wait => true);"
+```
+
+### Verificaciones
+
+#### 3. Confirmar que la nueva primaria no está en recuperación
+
+```bash
+docker exec -it pg-replica psql -U postgres -d postgres -c "SELECT pg_is_in_recovery();"
+# Debe devolver: f
+```
+
+#### 4. Insertar datos en la nueva primaria para evidenciar el cambio
+
+```bash
+docker exec -it pg-replica psql -U postgres -d bases2_proyectos -c "INSERT INTO public.replica_test(val) VALUES ('failover-ok');"
+```
+
+---
+
+## B) Failback (Reintegrar el Viejo Primario como Standby)
+
+### Acciones
+
+#### 1. Asegurarse de que el viejo primario siga detenido
+
+```bash
+docker stop pg-bases2
+```
+
+#### 2. Limpiar el directorio de datos
+
+```bash
+docker compose run --rm -u postgres --entrypoint bash pg-bases2 -lc "rm -rf /var/lib/postgresql/data/*"
+```
+
+#### 3. Crear slot físico en la nueva primaria
+
+```bash
+docker exec -it pg-replica psql -U postgres -d postgres -c "SELECT pg_create_physical_replication_slot('primary1');"
+```
+
+#### 4. Re-clonar el viejo primario desde la nueva primaria
+
+```bash
+docker compose run --rm -u postgres --entrypoint bash pg-bases2 -lc "
+  set -e
+  export PGPASSWORD='replica_pass'
+  pg_basebackup -h pg-replica -U replicator -D /var/lib/postgresql/data -X stream -R -S primary1 -v
+  echo \"primary_conninfo = 'host=pg-replica port=5432 user=replicator password=replica_pass application_name=primary1'\" >> /var/lib/postgresql/data/postgresql.auto.conf
+"
+```
+
+#### 5. Arrancar el viejo primario como standby
+
+```bash
+docker compose up -d pg-bases2
+```
+
+### Verificaciones
+
+#### 6. Verificar el standby en streaming desde la primaria
+
+```bash
+docker exec -it pg-replica psql -U postgres -d postgres -c \
+"SELECT application_name, state, sync_state, client_addr FROM pg_stat_replication;"
+# Debe aparecer application_name='primary1' con state='streaming'
+```
+
+#### 7. Confirmar que el standby está en recuperación
+
+```bash
+docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT pg_is_in_recovery();"
+# Debe devolver: t
+```
+
+---
+
+## Nota
+
+Lo imprescindible son:
+
+- Las acciones anteriores
+- Las verificaciones de `pg_is_in_recovery()` y `pg_stat_replication`
+- Un INSERT de prueba en la primaria
