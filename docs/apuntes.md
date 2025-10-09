@@ -355,3 +355,24 @@ docker cp pg-bases2:/var/lib/pgbackrest/backup/bases2-db/backup.info .\backups\
 docker cp pg-bases2:/var/lib/pgbackrest/backup/bases2-db/backup.info.copy .\backups\
 
 
+### Ejecutar el bakcup diferencial
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db --type=diff --log-level-console=info backup
+
+
+#### 2. Revisar el estado
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db info
+
+
+Paso E — Backup incremental
+
+Ejecuta:
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db --type=incr --log-level-console=info backup
+
+
+Verifica:
+
+docker exec -u postgres pg-bases2 pgbackrest --stanza=bases2-db info
+
