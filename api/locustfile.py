@@ -1,63 +1,61 @@
-import csv
+# locustfile.py
 import os
 import random
-import logging
+import itertools
+from typing import List, Dict, Optional
 from locust import HttpUser, task, between, events
 
-logger = logging.getLogger("locust")  # <-- usa el logger de locust
+FIRST = ["Ana","Luis","María","Carlos","Sofía","Jorge","Elena","Mateo","Lucía","Diego"]
+LAST  = ["García","Hernández","Martínez","López","González","Pérez","Rodríguez","Sánchez","Ramírez","Flores"]
 
-BASE_PATH = os.path.dirname(__file__)
-DATA_CSV = os.path.join(BASE_PATH, "sample_nbs.csv")
 
-_records = []
+# --- Config ---
+BATCH_SIZE = int(os.getenv("LOCUST_BATCH_SIZE", "50"))
 
-@events.init.add_listener
-def on_locust_init(environment, **kwargs):
-    """Carga datos una sola vez al iniciar Locust."""
-    global _records
-    try:
-        if os.path.isfile(DATA_CSV):
-            with open(DATA_CSV, newline="", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if not row or row[0].startswith("#"):
-                        continue
-                    nconst = row[0].strip()
-                    pname = row[1].strip()
-                    byear = row[2].strip() or None
-                    dyear = row[3].strip() or None
-                    _records.append({
-                        "nconst": nconst,
-                        "primaryName": pname,
-                        "birthYear": int(byear) if byear else None,
-                        "deathYear": int(dyear) if dyear else None
-                    })
-            logger.info("Cargados %d registros desde %s", len(_records), DATA_CSV)
-        else:
-            logger.warning("No se encontró %s; se generarán datos sintéticos", DATA_CSV)
-    except Exception as e:
-        logger.exception("Error cargando %s: %s", DATA_CSV, e)
+# Un offset aleatorio por proceso para evitar colisiones si corres en distribuido
+_BASE_OFFSET = random.randint(0, 9_000_000)
+_counter = itertools.count(start=_BASE_OFFSET)
 
-def synthetic_record(i: int):
+def _nconst_next() -> str:
+    """Genera nm + 7 dígitos, evitando (en lo posible) colisiones por proceso."""
+    i = next(_counter) % 10_000_000  # aseguramos 7 dígitos
+    return f"nm{i:07d}"
+
+def random_person_name():
+    return f"{random.choice(FIRST)} {random.choice(LAST)}"
+
+def synthetic_record() -> Dict:
+    by = random.randint(1850, 2010)
+    # 75% sin deathYear; si lo tiene, que sea >= birthYear
+    if random.random() < 0.75:
+        dy: Optional[int] = None
+    else:
+        dy = random.randint(max(by, 1900), 2024)
     return {
-        "nconst": f"nm{i:07d}",
-        "primaryName": f"Name {i}",
-        "birthYear": random.randint(1850, 2010),
-        "deathYear": None if random.random() < 0.7 else random.randint(1900, 2024)
+        "nconst": _nconst_next(),
+        "primaryName": random_person_name(),
+        "birthYear": by,
+        "deathYear": dy,
     }
 
+def synthetic_batch(k: int) -> List[Dict]:
+    return [synthetic_record() for _ in range(k)]
+
 class NameBasicsUser(HttpUser):
-    wait_time = between(0.2, 1.0)
+    # define el host con:  locust -f locustfile.py -H http://localhost:8000
+    wait_time = between(0.1, 0.5)
 
     @task(3)
     def insert_one(self):
-        payload = random.choice(_records) if _records else synthetic_record(random.randint(1, 9_999_999))
+        payload = synthetic_record()
         self.client.post("/name_basics", json=payload, name="POST /name_basics")
 
     @task(1)
     def insert_batch(self):
-        items = random.sample(_records, k=min(50, len(_records))) if _records else [
-            synthetic_record(random.randint(1, 9_999_999)) for _ in range(50)
-        ]
+        items = synthetic_batch(BATCH_SIZE)
         payload = {"items": items, "upsert": True}
         self.client.post("/name_basics/batch", json=payload, name="POST /name_basics/batch")
+
+
+
+# locust -f locust.py --host=http://localhost:8080
