@@ -1,0 +1,37 @@
+# Python / venv
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+site/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs y reports
+*.log
+logs/
+reports/
+*.stats*.csv
+*.failures.csv
+*.exceptions.csv
+
+# Docker volúmenes locales
+pg_data/
+pg_wal_archive/
+
+# Datos grandes (ajusta a tu caso)
+data/
+!data/sample_nbs.csv
