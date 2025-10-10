@@ -42,8 +42,8 @@ def synthetic_batch(k: int) -> List[Dict]:
     return [synthetic_record() for _ in range(k)]
 
 class NameBasicsUser(HttpUser):
-    # define el host con:  locust -f locustfile.py -H http://localhost:8000
-    wait_time = between(0.1, 0.5)
+
+    wait_time = between(1.0, 2.0)
 
     @task(3)
     def insert_one(self):
@@ -58,4 +58,4 @@ class NameBasicsUser(HttpUser):
 
 
 
-# locust -f locust.py --host=http://localhost:8080
+# locust -f locustfile.py --host=http://localhost:8000

@@ -1,8 +1,14 @@
 # app/db.py
 import os
 from psycopg import errors
-from psycopg.pool import ConnectionPool
+
 from dotenv import load_dotenv
+# Import del pool con fallback (arriba del todo)
+try:
+    from psycopg.pool import ConnectionPool          # psycopg 3.2+ con extra "pool"
+except Exception:
+    from psycopg_pool import ConnectionPool          # fallback
+
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
