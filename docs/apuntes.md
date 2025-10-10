@@ -254,8 +254,7 @@ docker compose up -d pg-bases2
 #### 6. Verificar el standby en streaming desde la primaria
 
 ```bash
-docker exec -it pg-replica psql -U postgres -d postgres -c \
-"SELECT application_name, state, sync_state, client_addr FROM pg_stat_replication;"
+docker exec -it pg-replica psql -U postgres -d postgres -c "SELECT application_name, state, sync_state, client_addr FROM pg_stat_replication;"
 # Debe aparecer application_name='primary1' con state='streaming'
 ```
 
@@ -267,7 +266,106 @@ docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT pg_is_in_recov
 ```
 
 ---
+### Hacer que pg-bases 2 sea la primaria de nuevo para EL FAILBACK COMPLETO
+#### Switchover: `pg-bases2` → primaria, `pg-replica` → standby
 
+## Asegurar que el standby está al día
+
+### Verificar LSN en la primaria actual (pg-replica:5433)
+
+```bash
+docker exec -it pg-replica psql -U postgres -d postgres -c "SELECT pg_current_wal_lsn();"
+```
+
+### Verificar LSN en el standby actual (pg-bases2:5432)
+
+```bash
+docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT pg_last_wal_replay_lsn();"
+```
+
+**Nota:** Idealmente ambos LSN deben estar muy cercanos o iguales.
+
+## Detener la primaria actual para evitar dos primarias
+
+```bash
+docker stop pg-replica
+```
+
+## Promover `pg-bases2` a primaria
+
+```bash
+docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT pg_promote(wait => true);"
+docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT pg_is_in_recovery();"  # debe ser 'f'
+```
+
+## Preparar un slot en la nueva primaria para el futuro standby
+
+```bash
+docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT pg_create_physical_replication_slot('replica1');"
+```
+
+## Re-clonar `pg-replica` como standby de `pg-bases2`
+
+### Limpiar datos de pg-replica
+
+```bash
+docker compose run --rm -u postgres --entrypoint bash pg-replica -lc "rm -rf /var/lib/postgresql/data/*"
+```
+
+### Realizar basebackup desde la nueva primaria (pg-bases2:5432)
+
+```bash
+docker compose run --rm -u postgres --entrypoint bash pg-replica -lc "
+  set -e
+  export PGPASSWORD='replica_pass'
+  pg_basebackup -h pg-bases2 -U replicator -D /var/lib/postgresql/data -X stream -R -S replica1 -v
+  echo \"primary_conninfo = 'host=pg-bases2 port=5432 user=replicator password=replica_pass application_name=replica1'\" >> /var/lib/postgresql/data/postgresql.auto.conf
+"
+```
+
+## Arrancar `pg-replica` como standby
+
+```bash
+docker compose up -d pg-replica
+```
+
+## Verificar estados
+
+### Verificar replicación en la nueva primaria (pg-bases2)
+
+```bash
+docker exec -it pg-bases2 psql -U postgres -d postgres -c "SELECT application_name, state, sync_state, client_addr FROM pg_stat_replication;"
+```
+
+### Verificar que el standby está en recuperación (pg-replica)
+
+```bash
+docker exec -it pg-replica psql -U postgres -d postgres -c "SELECT pg_is_in_recovery();"  # debe ser 't'
+```
+
+## Prueba
+
+### Insertar en la primaria (pg-bases2:5432)
+
+```bash
+docker exec pg-bases2 psql -U postgres -d bases2_proyectos -c "INSERT INTO imdb.name_basics(nconst,primaryName) VALUES ('nmFA01','Failback OK') ON CONFLICT DO NOTHING;"
+```
+
+### Leer en el standby (pg-replica:5433)
+
+```bash
+docker exec pg-replica psql -U postgres -d bases2_proyectos -c "SELECT * FROM imdb.name_basics WHERE nconst='nmFA01';"
+```
+
+### Intento de INSERT en la replica
+```bash
+docker exec pg-replica psql -U postgres -d bases2_proyectos -c "INSERT INTO imdb.name_basics(nconst, primaryName, birthYear, deathYear)
+VALUES ('nmROFAIL','Debe fallar en standby',1990,NULL);"
+```
+### Solo confirmar que esta en modo lectura
+```bash
+docker exec pg-replica psql -U postgres -d bases2_proyectos -c "SHOW transaction_read_only;"
+```
 ## Nota
 
 Lo imprescindible son:
