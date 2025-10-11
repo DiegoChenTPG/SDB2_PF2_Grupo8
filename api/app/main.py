@@ -1,7 +1,9 @@
 # app/main.py
 from fastapi import FastAPI, HTTPException
 from app.models import NameBasicIn, BatchIn
-from app.db import run_write, run_write_many, pool  # <- importa del nuevo db.py
+from app.db import run_write, run_write_many, pool  # importa db.py
+from app.backup_logs import router as backup_logs_router
+
 
 INSERT_SQL = """
 INSERT INTO name_basics (nconst, primaryName, birthYear, deathYear)
@@ -18,6 +20,8 @@ SET primaryName = EXCLUDED.primaryName,
 """
 
 app = FastAPI(title="Name Basics API", version="1.0.0")
+app.include_router(backup_logs_router)
+
 
 @app.get("/health")
 def health():

@@ -78,6 +78,14 @@ services:
       retries: 30
     networks: [pgnet]
 
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    networks: [pgnet]
+
   # === PgAdmin  (apunta al primary) ===
   pgadmin:
     image: dpage/pgadmin4
