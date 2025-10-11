@@ -31,7 +31,7 @@ class BackupLogOut(BackupLogIn):
 
 router = APIRouter(prefix="/backup", tags=["backup-logs"])
 
-@router.post("/log", response_model=BackupLogOut)
+@router.post("/log", response_model=BackupLogOut, response_model_exclude={"wal_start", "wal_stop"})
 def push_backup_log(entry: BackupLogIn):
     base = int(entry.when.timestamp())
     suffix = entry.label or entry.type
@@ -40,12 +40,11 @@ def push_backup_log(entry: BackupLogIn):
     payload = entry.model_dump()
     payload["id"] = log_id
 
-    r.lpush(BACKUP_LOG_KEY, json.dumps(payload))
-    r.ltrim(BACKUP_LOG_KEY, 0, 499)  # conserva últimos 500
-
+    r.lpush(BACKUP_LOG_KEY, json.dumps(payload, default=str))
+    r.ltrim(BACKUP_LOG_KEY, 0, 499)
     return BackupLogOut(**payload)
 
-@router.get("/logs", response_model=List[BackupLogOut])
+@router.get("/logs", response_model=List[BackupLogOut], response_model_exclude={"wal_start", "wal_stop"})
 def list_backup_logs(limit: int = 50):
     items = r.lrange(BACKUP_LOG_KEY, 0, max(limit, 1) - 1)
     out: List[BackupLogOut] = []
